@@ -1,7 +1,44 @@
 {-# LANGUAGE CPP #-}
 {-# LANGUAGE ForeignFunctionInterface #-}
 
-module Graphics.X11.Xkb where
+module Graphics.X11.Xkb
+       ( OpcodeMajor, OpcodeMinor, EventBase, ErrorBase,
+         VersionMajor, VersionMinor,
+
+         EventType,
+         newKeyboardNotify, mapNotify, stateNotify, controlsNotify,
+         indicatorStateNotify, indicatorMapNotify, namesNotify, compatMapNotify,
+         bellNotify, actionMessage, accessXNotify, extensionDeviceNotify,
+
+         Event, EventMask,
+
+         Device,
+         useCoreKbd, useCorePtr,
+         dfltXIClass, dfltXIId, allXIClasses, allXIIds, xINone,
+
+         StateNotifyEventDetailMask,
+         modifierStateMask, modifierBaseMask, modifierLatchMask,
+         modifierLockMask, groupStateMask, groupBaseMask, groupLatchMask,
+         groupLockMask, compatStateMask, grabModsMask, compatGrabModsMask,
+         lookupModsMask, compatLookupModsMask,
+         pointerButtonMask, allStateComponentsMask,
+
+
+         EventDetailMask,
+
+         Group,
+         group1Index, group2Index, group3Index, group4Index,
+
+         State,
+         StateNotifyEvent,
+
+         versionMajor, versionMinor, versionString,
+         libraryVersion, queryExtension, openDisplay, ignoreExtension,
+         getEventType, getDevice, getTime, selectEvents, selectEventDetails,
+         lockGroup, latchGroup, lockModifiers, latchModifiers,
+         getState, getStateNotifyEvent
+       )
+       where
 
 import Foreign
 import Foreign.C
@@ -55,11 +92,9 @@ foreign import ccall unsafe "XkbQueryExtension"
                     -> IO Bool
 
 queryExtension :: X11.Display
-               -> VersionMajor
-               -> VersionMinor
                -> IO (Either (VersionMajor, VersionMinor)
                              (OpcodeMajor, EventBase, ErrorBase))
-queryExtension dpy versionMajor versionMinor =
+queryExtension dpy =
   alloca $ \p_opcodeMajor ->
   alloca $ \p_eventBase ->
   alloca $ \p_errorBase ->
@@ -84,13 +119,13 @@ queryExtension dpy versionMajor versionMinor =
 
         return $ Left (serverMajor, serverMinor)
 
-type XkbOpenDisplayStatus = #{type int}
-#{enum XkbOpenDisplayStatus,
- , xkb_OD_Success           = XkbOD_Success
- , xkb_OD_BadLibraryVersion = XkbOD_BadLibraryVersion
- , xkb_OD_ConnectionRefused = XkbOD_ConnectionRefused
- , xkb_OD_NonXkbServer      = XkbOD_NonXkbServer
- , xkb_OD_BadServerVersion  = XkbOD_BadServerVersion
+type OpenDisplayStatus = #{type int}
+#{enum OpenDisplayStatus,
+ , xkbOD_Success           = XkbOD_Success
+ , xkbOD_BadLibraryVersion = XkbOD_BadLibraryVersion
+ , xkbOD_ConnectionRefused = XkbOD_ConnectionRefused
+ , xkbOD_NonXkbServer      = XkbOD_NonXkbServer
+ , xkbOD_BadServerVersion  = XkbOD_BadServerVersion
  }
 
 foreign import ccall unsafe "XkbOpenDisplay"
@@ -99,7 +134,7 @@ foreign import ccall unsafe "XkbOpenDisplay"
                  -> Ptr ErrorBase
                  -> Ptr VersionMajor
                  -> Ptr VersionMinor
-                 -> Ptr XkbOpenDisplayStatus
+                 -> Ptr OpenDisplayStatus
                  -> IO (Ptr X11.Display)
 
 openDisplay :: String -> IO (EventBase, ErrorBase, X11.Display)
@@ -124,143 +159,145 @@ openDisplay name =
 
       return (eventBase, errorBase, X11.Display dpy)
 
-  where maybeThrow :: Ptr X11.Display -> XkbOpenDisplayStatus -> IO ()
+  where maybeThrow :: Ptr X11.Display -> OpenDisplayStatus -> IO ()
         maybeThrow dpy status
-          | status == xkb_OD_Success = assert (dpy /= nullPtr) $ return ()
+          | status == xkbOD_Success = assert (dpy /= nullPtr) $ return ()
           | otherwise =
               assert (dpy == nullPtr) $ throw (errorMsg status)
 
         throw :: String -> IO ()
         throw = ioError . userError
 
-        errorMsg :: XkbOpenDisplayStatus -> String
+        errorMsg :: OpenDisplayStatus -> String
         errorMsg status
-          | status == xkb_OD_BadLibraryVersion =
+          | status == xkbOD_BadLibraryVersion =
             "xlib of incompatible version with ours: " ++ versionString
-          | status == xkb_OD_BadServerVersion =
+          | status == xkbOD_BadServerVersion =
             "xserver of incompatible version with ours: " ++ versionString
-          | status == xkb_OD_ConnectionRefused = "failed to open display"
-          | status == xkb_OD_NonXkbServer = "XKB extension not present"
+          | status == xkbOD_ConnectionRefused = "failed to open display"
+          | status == xkbOD_NonXkbServer = "XKB extension not present"
+          | otherwise =
+            error "Impossible happened. Got display status " ++ show status
 
 foreign import ccall unsafe "XkbIgnoreExtension"
   ignoreExtension :: Bool -> IO Bool
 
-type XkbEventType = #{type int}
-#{enum XkbEventType,
-  , xkb_NewKeyboardNotify     = XkbNewKeyboardNotify
-  , xkb_MapNotify             = XkbMapNotify
-  , xkb_StateNotify           = XkbStateNotify
-  , xkb_ControlsNotify        = XkbControlsNotify
-  , xkb_IndicatorStateNotify  = XkbIndicatorStateNotify
-  , xkb_IndicatorMapNotify    = XkbIndicatorMapNotify
-  , xkb_NamesNotify           = XkbNamesNotify
-  , xkb_CompatMapNotify       = XkbCompatMapNotify
-  , xkb_BellNotify            = XkbBellNotify
-  , xkb_ActionMessage         = XkbActionMessage
-  , xkb_AccessXNotify         = XkbAccessXNotify
-  , xkb_ExtensionDeviceNotify = XkbExtensionDeviceNotify
+type EventType = #{type int}
+#{enum EventType,
+  , newKeyboardNotify     = XkbNewKeyboardNotify
+  , mapNotify             = XkbMapNotify
+  , stateNotify           = XkbStateNotify
+  , controlsNotify        = XkbControlsNotify
+  , indicatorStateNotify  = XkbIndicatorStateNotify
+  , indicatorMapNotify    = XkbIndicatorMapNotify
+  , namesNotify           = XkbNamesNotify
+  , compatMapNotify       = XkbCompatMapNotify
+  , bellNotify            = XkbBellNotify
+  , actionMessage         = XkbActionMessage
+  , accessXNotify         = XkbAccessXNotify
+  , extensionDeviceNotify = XkbExtensionDeviceNotify
   }
 
-newtype XkbEvent = XkbEvent XkbEventPtr
-type XkbEventPtr = Ptr XkbEvent
-type XkbEventMask = #{type unsigned long int}
+newtype Event = Event { eventPtr :: EventPtr }
+type EventPtr = Ptr Event
+type EventMask = #{type unsigned long int}
 
-type XkbDevice = #{type unsigned int}
-#{enum XkbDevice,
- , xkb_UseCoreKbd   = XkbUseCoreKbd
- , xkb_UseCorePtr   = XkbUseCorePtr
- , xkb_DfltXIClass  = XkbDfltXIClass
- , xkb_DfltXIId     = XkbDfltXIId
- , xkb_AllXIClasses = XkbAllXIClasses
- , xkb_AllXIIds     = XkbAllXIIds
- , xkb_XINone       = XkbXINone
+type Device = #{type unsigned int}
+#{enum Device,
+ , useCoreKbd   = XkbUseCoreKbd
+ , useCorePtr   = XkbUseCorePtr
+ , dfltXIClass  = XkbDfltXIClass
+ , dfltXIId     = XkbDfltXIId
+ , allXIClasses = XkbAllXIClasses
+ , allXIIds     = XkbAllXIIds
+ , xINone       = XkbXINone
  }
 
-get_XkbEventType :: XkbEventPtr -> IO XkbEventType
-get_XkbEventType = #{peek XkbAnyEvent, xkb_type}
+getEventType :: Event -> IO EventType
+getEventType = #{peek XkbAnyEvent, xkb_type} . eventPtr
 
-get_XkbDevice :: XkbEventPtr -> IO XkbDevice
-get_XkbDevice = #{peek XkbAnyEvent, device}
+getDevice :: Event -> IO Device
+getDevice = #{peek XkbAnyEvent, device} . eventPtr
 
-get_Time :: XkbEventPtr -> IO X11.Time
-get_Time = #{peek XkbAnyEvent, time}
+getTime :: Event -> IO X11.Time
+getTime = #{peek XkbAnyEvent, time} . eventPtr
 
 
 foreign import ccall unsafe "XkbSelectEvents"
   selectEvents :: X11.Display
-               -> XkbDevice
-               -> XkbEventMask
-               -> XkbEventMask
+               -> Device
+               -> EventMask
+               -> EventMask
                -> IO Bool
 
-type XkbStateNotifyEventDetailMask = #{type int}
-#{enum XkbStateNotifyEventDetailMask,
-  , xkb_ModifierStateMask      = XkbModifierStateMask
-  , xkb_ModifierBaseMask       = XkbModifierBaseMask
-  , xkb_ModifierLatchMask      = XkbModifierLatchMask
-  , xkb_ModifierLockMask       = XkbModifierLockMask
-  , xkb_GroupStateMask         = XkbGroupStateMask
-  , xkb_GroupBaseMask          = XkbGroupBaseMask
-  , xkb_GroupLatchMask         = XkbGroupLatchMask
-  , xkb_GroupLockMask          = XkbGroupLockMask
-  , xkb_CompatStateMask        = XkbCompatStateMask
-  , xkb_GrabModsMask           = XkbGrabModsMask
-  , xkb_CompatGrabModsMask     = XkbCompatGrabModsMask
-  , xkb_LookupModsMask         = XkbLookupModsMask
-  , xkb_CompatLookupModsMask   = XkbCompatLookupModsMask
-  , xkb_PointerButtonMask      = XkbPointerButtonMask
-  , xkb_AllStateComponentsMask = XkbAllStateComponentsMask
+type StateNotifyEventDetailMask = #{type int}
+#{enum StateNotifyEventDetailMask,
+  , modifierStateMask      = XkbModifierStateMask
+  , modifierBaseMask       = XkbModifierBaseMask
+  , modifierLatchMask      = XkbModifierLatchMask
+  , modifierLockMask       = XkbModifierLockMask
+  , groupStateMask         = XkbGroupStateMask
+  , groupBaseMask          = XkbGroupBaseMask
+  , groupLatchMask         = XkbGroupLatchMask
+  , groupLockMask          = XkbGroupLockMask
+  , compatStateMask        = XkbCompatStateMask
+  , grabModsMask           = XkbGrabModsMask
+  , compatGrabModsMask     = XkbCompatGrabModsMask
+  , lookupModsMask         = XkbLookupModsMask
+  , compatLookupModsMask   = XkbCompatLookupModsMask
+  , pointerButtonMask      = XkbPointerButtonMask
+  , allStateComponentsMask = XkbAllStateComponentsMask
   }
 
-type XkbEventDetailMask = #{type unsigned long int}
+type EventDetailMask = #{type unsigned long int}
 
 foreign import ccall unsafe "XkbSelectEventDetails"
   selectEventDetails :: X11.Display
-                     -> XkbDevice
-                     -> XkbEventType
-                     -> XkbEventDetailMask
-                     -> XkbEventDetailMask
+                     -> Device
+                     -> EventType
+                     -> EventDetailMask
+                     -> EventDetailMask
                      -> IO Bool
 
-type XkbGroup = #{type int}
-#{enum XkbGroup,
- , xkb_Group1Index = XkbGroup1Index
- , xkb_Group2Index = XkbGroup2Index
- , xkb_Group3Index = XkbGroup3Index
- , xkb_Group4Index = XkbGroup4Index
+type Group = #{type int}
+#{enum Group,
+ , group1Index = XkbGroup1Index
+ , group2Index = XkbGroup2Index
+ , group3Index = XkbGroup3Index
+ , group4Index = XkbGroup4Index
  }
 
 foreign import ccall unsafe "XkbLockGroup"
   lockGroup :: X11.Display
-            -> XkbDevice
-            -> XkbGroup
+            -> Device
+            -> Group
             -> IO Bool
 
 foreign import ccall unsafe "XkbLatchGroup"
   latchGroup :: X11.Display
-             -> XkbDevice
-             -> XkbGroup
+             -> Device
+             -> Group
              -> IO Bool
 
 foreign import ccall unsafe "XkbLockModifiers"
   lockModifiers :: X11.Display
-                -> XkbDevice
+                -> Device
                 -> X11.KeyMask
                 -> X11.KeyMask
                 -> IO Bool
 
 foreign import ccall unsafe "XkbLatchModifiers"
   latchModifiers :: X11.Display
-                 -> XkbDevice
+                 -> Device
                  -> X11.KeyMask
                  -> X11.KeyMask
                  -> IO Bool
 
-type XkbState =
-  ( XkbGroup                      -- group
-  , XkbGroup                      -- base_group
-  , XkbGroup                      -- latched_group
-  , XkbGroup                      -- locked_group
+type State =
+  ( Group                      -- group
+  , Group                      -- base_group
+  , Group                      -- latched_group
+  , Group                      -- locked_group
   , X11.KeyMask                   -- mods
   , X11.KeyMask                   -- base_mods
   , X11.KeyMask                   -- latched_mods
@@ -273,11 +310,11 @@ type XkbState =
   , X11.ButtonMask                -- ptr_buttons
   )
 
-allocaXkbState :: (Ptr XkbState -> IO a) -> IO a
-allocaXkbState = allocaBytes #{size XkbStateRec}
+allocaState :: (Ptr State -> IO a) -> IO a
+allocaState = allocaBytes #{size XkbStateRec}
 
-peekXkbState :: Ptr XkbState -> IO XkbState
-peekXkbState p = do
+peekState :: Ptr State -> IO State
+peekState p = do
   group              <- #{peek XkbStateRec, group} p
   base_group         <- #{peek XkbStateRec, base_group} p
   latched_group      <- #{peek XkbStateRec, latched_group} p
@@ -310,24 +347,24 @@ peekXkbState p = do
 
 foreign import ccall unsafe "XkbGetState"
   xkbGetState :: X11.Display
-              -> XkbDevice
-              -> Ptr XkbState
+              -> Device
+              -> Ptr State
               -> IO X11.Status
 
-getState :: X11.Display -> XkbDevice -> IO (Maybe XkbState)
+getState :: X11.Display -> Device -> IO (Maybe State)
 getState dpy device =
-  allocaXkbState $ \p_xkbState -> do
-    status <- xkbGetState dpy device p_xkbState
+  allocaState $ \p_state -> do
+    status <- xkbGetState dpy device p_state
     if status == 0
-      then fmap Just (peekXkbState p_xkbState)
+      then fmap Just (peekState p_state)
       else return Nothing
 
-type XkbStateNotifyEvent =
-  ( XkbStateNotifyEventDetailMask -- changed
-  , XkbGroup                      -- group
-  , XkbGroup                      -- base_group
-  , XkbGroup                      -- latched_group
-  , XkbGroup                      -- locked_group
+type StateNotifyEvent =
+  ( StateNotifyEventDetailMask -- changed
+  , Group                      -- group
+  , Group                      -- base_group
+  , Group                      -- latched_group
+  , Group                      -- locked_group
   , X11.KeyMask                   -- mods
   , X11.KeyMask                   -- base_mods
   , X11.KeyMask                   -- latched_mods
@@ -344,12 +381,11 @@ type XkbStateNotifyEvent =
   , OpcodeMinor                   -- req_minor
   )
 
-allocaXkbStateNotifyEvent :: (Ptr XkbStateNotifyEvent -> IO a) -> IO a
-allocaXkbStateNotifyEvent = allocaBytes #{size XkbStateNotifyEvent}
+allocaStateNotifyEvent :: (Ptr StateNotifyEvent -> IO a) -> IO a
+allocaStateNotifyEvent = allocaBytes #{size XkbStateNotifyEvent}
 
-peekXkbStateNotifyEvent :: Ptr XkbStateNotifyEvent
-                           -> IO XkbStateNotifyEvent
-peekXkbStateNotifyEvent p = do
+peekStateNotifyEvent :: Ptr StateNotifyEvent -> IO StateNotifyEvent
+peekStateNotifyEvent p = do
   changed            <- #{peek XkbStateNotifyEvent, changed} p
   group              <- #{peek XkbStateNotifyEvent, group} p
   base_group         <- #{peek XkbStateNotifyEvent, base_group} p
@@ -390,5 +426,5 @@ peekXkbStateNotifyEvent p = do
           req_major,
           req_minor)
 
-get_XkbStateNotifyEvent :: XkbEventPtr -> IO XkbStateNotifyEvent
-get_XkbStateNotifyEvent p = peekXkbStateNotifyEvent (castPtr p)
+getStateNotifyEvent :: Event -> IO StateNotifyEvent
+getStateNotifyEvent = peekStateNotifyEvent . castPtr . eventPtr
