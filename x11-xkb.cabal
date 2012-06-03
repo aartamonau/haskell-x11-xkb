@@ -1,0 +1,17 @@
+name:              x11-xkb
+version:           0.0.1
+
+license:           LGPL
+license-file:      LICENSE
+copyright:         Aliaksey Artamonau, 2012
+maintainer:        Aliaksey Artamonau <aliaksiej.artamonau@gmail.com>
+homepage:          http://github.com/aartamonau/haskell-x11-xkb
+category:          Graphics
+synopsis:          An incomplete Haskell binding XKB X11 extension.
+description:       An incomplete Haskell binding XKB X11 extension.
+hs-source-dirs:    src
+exposed-modules:   Graphics.X11.Xkb
+build-depends:     base >= 3 && < 5, X11
+build-type:        Simple
+ghc-options:       -funbox-strict-fields -Wall -fno-warn-unused-binds -O2
+ghc-prof-options:  -prof -auto-all
